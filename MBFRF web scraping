@@ -1,0 +1,106 @@
+import pandas as pd
+from bs4 import BeautifulSoup
+from collections import namedtuple, OrderedDict
+import os
+
+def extract_data(content, name='Not provided', period=''):
+    soup = BeautifulSoup(content, 'html.parser')
+    date = soup.findAll('h3')[0].text.split(': ')[-1]
+    if soup.findAll('td', text=' Ginnie Mae ID '):
+        pissuer = soup.findAll('td', text=' Ginnie Mae ID ')[0].findNext('td', {'class':'formProfileValue'}).text
+    else:
+        pissuer = ''
+    if soup.findAll('td', text=' FHA '):
+        fha_id = soup.findAll('td', text=' FHA ')[0].findNext('td', {'class':'formProfileValue'}).text
+    else:
+        fha_id = ''
+    row_collect = soup.findAll('tr')
+    FormClass = namedtuple('FormClass', ['FHA_ID', 'pissuer', 'Issuer', 'Time_ID', 'TName', 'data'])
+    RowClass = namedtuple('RowClass', ['id', 'name', 'data'])
+    row_class_list = []
+    k_toggle = False
+    for row in row_collect:
+        if row.findAll('td', {'class':'formItemName'}):
+            row_id = row.find('td', {'class':'formItemName'}).text
+            row_name = row.find('td', {'class':'formItemText'}).get_text(strip=True).replace('  ','').replace("\n",'')
+            row_data = []
+            for data in row.findAll('td'):
+                if data['class'][0] == 'formItemUser':
+                    row_data.append('formItemUser')
+                elif data['class'][0] == 'formItemCalc':
+                    formatted_str = data.get_text(strip=True).replace('  ','').replace("\n",'')
+                    #if formatted_str == '': formatted_str = '-'
+                    row_data.append(formatted_str)
+            if ((len(row_id) == 5) and ('*' not in row_id)) or (len(row_data) == 1 and '*' not in row_id):
+                if row_data[0] != 'formItemUser': 
+                    row_class_list.append(RowClass(id=row_id, name=row_name, data=row_data[0]))
+            elif '/' in row_id:
+                letter = row_id[-1]
+                id_1, id_2 = row_id[1:-2].split('/')
+                val_1, val_2 = row_data
+                row_class_list.append(RowClass(id=(id_1 + letter), name=row_name, data=val_1))
+                row_class_list.append(RowClass(id=(id_2 + letter), name=row_name, data=val_2))
+            elif row_id[1] == '*':
+                for ind, str_val in enumerate(row_data):
+                    if str_val == 'formItemUser': continue
+                    count = str(ind+21) if k_toggle else str(ind+1)
+                    if ind+1 < 10 and not k_toggle: 
+                        count = '0' + count
+                    temp_id = row_id[0] + count + '0' + row_id.split('*')[-1]
+                    row_class_list.append(RowClass(id=temp_id, name=row_name, data=str_val))
+                if (row_id[0] == 'K') and (row_id[-1] == 'T'): k_toggle = True
+            else:
+                for ind, str_val in enumerate(row_data):
+                    if str_val == 'formItemUser': continue
+                    if len(row_id.split('*')) > 1:
+                        count_list = [str(x) for x in range(0, len(row_data) * 2, 2)]
+                        temp_id = row_id[:3] + count_list[ind] + row_id.split('*')[-1]
+                    else:
+                        temp_id = row_id + str(ind+1) 
+                    row_class_list.append(RowClass(id=temp_id, name=row_name, data=str_val))
+    return FormClass(FHA_ID=fha_id, pissuer=pissuer, Issuer=name, Time_ID=period, TName=date, data=row_class_list)
+
+def do_pages(path='.'):
+    """ 
+    For local html form testing. Must provide path if not same dir as script.
+    """
+    data_list = []
+    for filename in os.listdir(path):
+        print(filename)
+        if os.path.splitext(filename)[1] == '.html':
+            data_list.append(extract_data(open(os.path.join(path, filename))))
+    output_data(data_list)
+
+def output_data(data_collection):
+    labels_csv = pd.read_csv('labels.csv', header=None).values.tolist()
+    output = OrderedDict([(label[0], []) for label in labels_csv])
+    excluded_ids = []
+    for form in data_collection:
+        output['FHA_ID'].append(form.FHA_ID)
+        output['pissuer'].append(form.pissuer)
+        output['Issuer'].append(form.Issuer)
+        output['Time_ID'].append(form.Time_ID)
+        output['TName'].append(form.TName)
+        for row_obj in form.data:
+            if row_obj.id in output:
+                output[row_obj.id].append(row_obj.data)
+            else:
+                if row_obj.id not in excluded_ids:
+                    excluded_ids.append(row_obj.id)
+    print('Excluded IDs:', excluded_ids) #Results be A120P, A130P, A150P and B350P
+    final = []
+    for x in range(len(data_collection)):
+        temp = []
+        for _, val in output.items():
+            try:
+                temp.append(val[x])
+            except:
+                temp.append('')
+        final.append(temp)
+    
+    headers = [x for x in output.keys()]
+    pd.DataFrame(final, columns=headers).to_csv('MBFRF_Form_Output.csv', index=False)
+
+if __name__ == "__main__":
+    var = input('Provide path if not same directory as script: ')
+    do_pages(var)
