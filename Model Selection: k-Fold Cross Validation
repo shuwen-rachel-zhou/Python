@@ -1,4 +1,4 @@
-# k-Fold Cross Validation using Kernel SVM Classification Model
+# k-Fold Cross Validation using Kernel SVM Classification Model to evaluate the model (mean and standard deviation)
 
 # Importing the libraries
 import numpy as np
