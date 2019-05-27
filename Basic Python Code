@@ -1,0 +1,22 @@
+# The "For" loop
+for i in range(5):
+  print ("Hello Python")
+ 
+range (5)
+list(range(5))
+
+# The "if" statement
+import numpy as np
+from numpy.random import randn
+
+x= randn()
+if x>1:
+  answer = "Greater than 1"
+elif x>=-1:
+  answer = "Between -1 and 1"
+else:
+  answer = "Less than -1"
+print(x)
+print(answer)
+
+
